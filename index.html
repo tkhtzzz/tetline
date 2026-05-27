@@ -766,7 +766,7 @@ function updateHUD(){
 
 // コンボ数→色
 function comboColor(c){
-  if(c>=16) return {color:'#FFD700',shadow:'0 0 14px #FFD700, 0 0 28px #FFA500', gradient:'linear-gradient(180deg,#ffffff,#FFD700,#FFE566,#FFD700,#ffffff)'};  // 金メタリック
+  if(c>=16) return {color:'#FFD700',shadow:'0 0 14px #FFD700, 0 0 28px #FFA500', gradient:'linear-gradient(180deg,#fff0a0,#FFD700,#8B6000,#FFD700,#fff0a0)'};  // 金メタリック（深み強め）
   if(c>=13) return {color:'#ff4444',shadow:'0 0 14px #ff2020, 0 0 28px #ff6060', gradient:'linear-gradient(180deg,#ffffff,#ff4444,#ff9999,#ff4444,#ffffff)'};  // 赤メタリック
   if(c>=10) return {color:'#4488ff',shadow:'0 0 14px #4488ff, 0 0 28px #0044cc', gradient:'linear-gradient(180deg,#ffffff,#4488ff,#aaccff,#4488ff,#ffffff)'};  // 青メタリック
   if(c>=7)  return {color:'#adff02',shadow:'0 0 14px #adff02, 0 0 28px #88cc00', gradient:'linear-gradient(180deg,#ffffff,#adff02,#ddff99,#adff02,#ffffff)'};  // 黄緑メタリック
