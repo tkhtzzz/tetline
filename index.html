@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TETRIS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;
+    -webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  :root{
+    --bg:#0a0a0f;--panel:#12121a;--border:#1e1e30;
+    --accent:#00f5ff;--accent2:#ff006e;--accent3:#adff02;
+    --text:#e0e0f0;--dim:#444460;
+  }
+  html,body{width:100%;height:100%;overflow:hidden;}
+  body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monospace;
+    display:flex;flex-direction:column;align-items:center;touch-action:none;user-select:none;}
+
+  #game-wrapper{display:flex;flex-direction:column;align-items:center;width:100%;padding:6px 6px 0;gap:3px;}
+
+  /* header */
+  #header{display:flex;justify-content:space-between;align-items:center;width:100%;position:relative;}
+  #title{font-family:'Orbitron',monospace;font-weight:900;font-size:18px;letter-spacing:5px;color:var(--accent);text-shadow:0 0 16px var(--accent);flex-shrink:0;}
+  #score-display{
+    position:absolute;left:50%;transform:translateX(-50%);
+    font-family:'Orbitron',monospace;font-size:18px;font-weight:900;
+    color:var(--accent3);text-shadow:0 0 12px rgba(173,255,2,0.5);
+    letter-spacing:2px;white-space:nowrap;
+  }
+  #header-right{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex-shrink:0;}
+  #header-sub{display:flex;gap:8px;align-items:center;}
+  .hd-item{font-size:10px;color:var(--dim);}
+  .hd-item span{color:var(--text);font-size:11px;}
+
+  /* play area */
+  #play-area{display:flex;align-items:flex-start;gap:6px;width:100%;}
+  .side-panel{width:52px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;}
+  .mini-box{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:5px;}
+  .mini-label{font-size:8px;letter-spacing:1px;color:var(--dim);text-align:center;margin-bottom:3px;}
+  #hold-box{cursor:pointer;-webkit-tap-highlight-color:transparent;transition:border-color 0.15s;}
+  #hold-box:active{border-color:var(--accent);}
+
+  #board-container{flex:1;position:relative;min-width:0;overflow:visible;}
+  #board-canvas{display:block;width:100%;border:1px solid var(--border);border-radius:3px;}
+
+  /* floating score popup */
+  .score-popup{
+    position:absolute;left:50%;transform:translateX(-50%);
+    font-family:'Orbitron',monospace;font-weight:700;
+    pointer-events:none;white-space:nowrap;text-align:center;line-height:1.3;
+    animation:popFloat 1.3s ease-out forwards;z-index:20;
+  }
+  @keyframes popFloat{
+    0%{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}
+    15%{opacity:1;transform:translateX(-50%) translateY(-6px) scale(1.12);}
+    100%{opacity:0;transform:translateX(-50%) translateY(-52px) scale(0.8);}
+  }
+  /* toast */
+  #action-msg{
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    font-family:'Share Tech Mono',monospace;font-size:11px;
+    color:#fff;background:rgba(0,0,0,0.6);padding:4px 10px;border-radius:4px;
+    pointer-events:none;opacity:0;transition:opacity 0.3s;
+    white-space:nowrap;z-index:40;
+  }
+
+
+  .combo-label{
+    letter-spacing:2px;
+    paint-order:stroke fill;
+    -webkit-text-stroke:0.06em rgba(0,0,0,0.85);
+    white-space:nowrap;
+    display:block;
+  }
+  .combo-num{
+    letter-spacing:1px;
+    animation:numPop 0.3s cubic-bezier(0.34,1.56,0.64,1) 0.08s both;
+    paint-order:stroke fill;
+    -webkit-text-stroke:0.05em rgba(0,0,0,0.8);
+    white-space:nowrap;
+  }
+  @keyframes numPop{
+    0%{transform:scale(0.3) translateY(10px);opacity:0;}
+    100%{transform:scale(1) translateY(0);opacity:1;}
+  }
+  /* 爆発ズームアウト: 出現→画面外まで巨大化しフェードアウト */
+  @keyframes explodeZoom{
+    0%  {transform:scale(0.3);opacity:0;}
+    12% {transform:scale(1.0);opacity:1;}
+    40% {transform:scale(1.0);opacity:1;}
+    100%{transform:scale(6.0);opacity:0;}
+  }
+  .explode-zoom{
+    animation:explodeZoom 1.3s cubic-bezier(0.25,0.1,0.25,1) forwards;
+  }
+  /* B2B接近: 小→大→さらに巨大化フェードアウト */
+  @keyframes b2bApproach{
+    0%  {transform:scale(0.4);opacity:0;}
+    15% {transform:scale(1.0);opacity:1;}
+    45% {transform:scale(1.0);opacity:0.95;}
+    100%{transform:scale(5.0);opacity:0;}
+  }
+  .b2b-approach{
+    animation:b2bApproach 0.9s ease-in forwards;
+    paint-order:stroke fill;
+    -webkit-text-stroke:0.05em rgba(0,0,0,0.9);
+    white-space:nowrap;
+  }
+  /* T-SPINパルス: 巨大出現→縮小→また巨大化してフェードアウト */
+  @keyframes tspinPulse{
+    0%  {transform:scale(2.5);opacity:0;}
+    18% {transform:scale(1.0);opacity:1;}
+    55% {transform:scale(1.0);opacity:1;}
+    100%{transform:scale(5.5);opacity:0;}
+  }
+  .tspin-pulse{
+    animation:tspinPulse 1.4s ease-in-out forwards;
+    paint-order:stroke fill;
+    -webkit-text-stroke:0.05em rgba(0,0,0,0.9);
+    white-space:nowrap;
+  }
+  /* T-SPIN 共通: 白字・黒縁・ピンク発光 */
+  .tspin-single-lbl{
+    color:#fff !important;
+    -webkit-text-fill-color:#fff !important;
+    text-shadow:0 0 10px #ff69b4, 0 0 24px #ff1493, 0 0 44px #ff69b4 !important;
+    filter:none !important;
+    -webkit-text-stroke:0.05em rgba(0,0,0,0.9);
+    paint-order:stroke fill;
+  }
+  /* T-SPIN DOUBLE: 明るい銀グラデーション高速点滅 */
+  /* 点滅: 100msで消→点を3回 */
+  @keyframes blinkDouble{
+    0%,16%{opacity:0;} 17%,33%{opacity:1;} 34%,50%{opacity:0;} 51%,67%{opacity:1;} 68%,84%{opacity:0;} 85%,100%{opacity:1;}
+  }
+  .tspin-double-lbl{
+    animation:tspinPulse 1.4s ease-in-out forwards, blinkDouble 0.6s steps(1) 1 !important;
+    background:linear-gradient(90deg,#c8c8c8,#fff,#e0e0e0,#fff,#c8c8c8) !important;
+    -webkit-background-clip:text !important;
+    -webkit-text-fill-color:transparent !important;
+    background-clip:text !important;
+    filter:drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 12px #ff69b4) drop-shadow(0 0 24px #ff1493) !important;
+  }
+  /* T-SPIN TRIPLE: 金グラデーション高速点滅 */
+  @keyframes blinkTriple{
+    0%,16%{opacity:0;} 17%,33%{opacity:1;} 34%,50%{opacity:0;} 51%,67%{opacity:1;} 68%,84%{opacity:0;} 85%,100%{opacity:1;}
+  }
+  .tspin-triple-lbl{
+    animation:tspinPulse 1.4s ease-in-out forwards, blinkTriple 0.6s steps(1) 1 !important;
+    background:linear-gradient(90deg,#b8860b,#FFD700,#fffacd,#FFD700,#b8860b) !important;
+    -webkit-background-clip:text !important;
+    -webkit-text-fill-color:transparent !important;
+    background-clip:text !important;
+    filter:drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 14px #ff69b4) drop-shadow(0 0 28px #ff1493) !important;
+  }
+  /* コンボ表示の背景: ぼかした黒 */
+  .combo-bg{
+    position:absolute;left:-60px;right:-60px;top:0;bottom:0;
+    background:rgba(0,0,0,0.55);
+    filter:blur(12px);
+    border-radius:8px;
+    z-index:-1;
+    pointer-events:none;
+  }
+  .combo-display{
+    position:absolute;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    pointer-events:none;z-index:30;
+    font-family:'Orbitron',monospace;font-weight:900;
+    text-align:center;line-height:1.1;
+    overflow:visible;
+    left:50%;transform:translateX(-50%);
+    width:1px; /* 中央固定のトリック: overflow:visibleで実際ははみ出す */
+  }
+
+
+
+  /* overlay */
+  #overlay{position:fixed;inset:0;background:rgba(10,10,15,0.93);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;z-index:100;backdrop-filter:blur(4px);}
+  #overlay h2{font-family:'Orbitron',monospace;font-size:26px;font-weight:900;letter-spacing:4px;color:var(--accent);text-shadow:0 0 24px var(--accent);}
+  #overlay p{color:var(--dim);font-size:13px;text-align:center;line-height:2;}
+  #start-btn{background:transparent;border:2px solid var(--accent);color:var(--accent);
+    font-family:'Orbitron',monospace;font-size:15px;letter-spacing:4px;padding:13px 32px;
+    border-radius:4px;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 0 18px rgba(0,245,255,0.2);}
+  #start-btn:active{background:var(--accent);color:var(--bg);}
+  #final-score{font-family:'Orbitron',monospace;font-size:32px;color:var(--accent3);text-shadow:0 0 16px rgba(173,255,2,0.6);}
+  #menu-btn{
+    font-size:20px;color:var(--dim);cursor:pointer;padding:4px 6px;
+    -webkit-tap-highlight-color:transparent;border-radius:4px;
+    transition:color 0.15s;flex-shrink:0;
+  }
+  #menu-btn:active{color:var(--accent);}
+
+  #pause-overlay{
+    position:fixed;inset:0;background:rgba(10,10,15,0.93);
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:16px;z-index:100;backdrop-filter:blur(4px);
+  }
+  #pause-overlay h2{
+    font-family:'Orbitron',monospace;font-size:26px;font-weight:900;
+    letter-spacing:6px;color:var(--accent);text-shadow:0 0 24px var(--accent);
+    margin-bottom:8px;
+  }
+  .pause-btn{
+    background:transparent;border:1px solid var(--border);color:var(--text);
+    font-family:'Share Tech Mono',monospace;font-size:16px;letter-spacing:2px;
+    padding:14px 32px;border-radius:6px;cursor:pointer;width:240px;text-align:left;
+    -webkit-tap-highlight-color:transparent;transition:border-color 0.15s,color 0.15s;
+  }
+  .pause-btn:active{border-color:var(--accent);color:var(--accent);}
+
+  #title-menu{display:flex;flex-direction:column;align-items:center;gap:14px;}
+  #howto-panel{display:none;flex-direction:column;align-items:center;gap:14px;}
+  #howto-panel.visible{display:flex;}
+  .title-sub-btn{
+    background:transparent;border:1px solid var(--border);color:var(--dim);
+    font-family:'Share Tech Mono',monospace;font-size:14px;letter-spacing:3px;
+    padding:10px 28px;border-radius:4px;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;transition:border-color 0.15s,color 0.15s;
+  }
+  .title-sub-btn:active{border-color:var(--accent);color:var(--accent);}
+  .how-to{font-size:11px;color:var(--dim);text-align:left;width:280px;line-height:1.6;}
+  .how-section{color:var(--accent);font-size:12px;letter-spacing:2px;margin-bottom:2px;}
+  .how-row{display:flex;justify-content:space-between;gap:8px;padding:1px 0;}
+  .how-key{color:var(--text);flex-shrink:0;font-size:10px;}
+  .how-val{color:var(--dim);font-size:10px;text-align:right;}
+  .how-note{margin-top:8px;font-size:9px;color:#555;text-align:center;}
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="header">
+    <div id="title">TETRIS</div>
+    <div id="header-right">
+      <div id="score-display" id="score-val">0</div>
+      <div id="header-sub">
+        <div class="hd-item">LV <span id="level-val">1</span></div>
+        <div class="hd-item">LINES <span id="lines-val">0</span></div>
+      </div>
+    </div>
+    <div id="menu-btn">☰</div>
+  </div>
+
+  <div id="play-area">
+    <!-- Left: Hold -->
+    <div class="side-panel">
+      <div class="mini-box" id="hold-box">
+        <div class="mini-label">HOLD</div>
+        <canvas id="hold-canvas" width="42" height="42"></canvas>
+      </div>
+    </div>
+
+    <!-- Board -->
+    <div id="board-container">
+      <canvas id="board-canvas"></canvas>
+      <div id="action-msg"></div>
+    </div>
+
+    <!-- Right: Next -->
+    <div class="side-panel">
+      <div class="mini-box">
+        <div class="mini-label">NEXT</div>
+        <canvas id="next-canvas" width="42" height="90"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="overlay">
+  <h2 id="overlay-title">TETRIS</h2>
+  <div id="final-score" class="hidden">0</div>
+
+  <!-- メインメニュー -->
+  <div id="title-menu">
+    <button id="start-btn">START</button>
+    <button id="howto-btn" class="title-sub-btn">動かし方</button>
+  </div>
+
+  <!-- 動かし方パネル -->
+  <div id="howto-panel">
+    <div class="how-to">
+      <div class="how-section">📱 タッチ操作</div>
+      <div class="how-row"><span class="how-key">左右フリック</span><span class="how-val">移動（速度で距離が変わる）</span></div>
+      <div class="how-row"><span class="how-key">上フリック</span><span class="how-val">ハードドロップ</span></div>
+      <div class="how-row"><span class="how-key">下ドラッグ</span><span class="how-val">落下加速</span></div>
+      <div class="how-row"><span class="how-key">左半分タップ</span><span class="how-val">左回転</span></div>
+      <div class="how-row"><span class="how-key">右半分タップ</span><span class="how-val">右回転</span></div>
+      <div class="how-row"><span class="how-key">HOLDをタップ</span><span class="how-val">ホールド</span></div>
+      <div class="how-section" style="margin-top:10px">🎮 ゲームパッド対応</div>
+      <div class="how-row"><span class="how-key">十字キー / Lスティック</span><span class="how-val">移動・加速</span></div>
+      <div class="how-row"><span class="how-key">十字キー上</span><span class="how-val">ハードドロップ</span></div>
+      <div class="how-row"><span class="how-key">Aボタン</span><span class="how-val">左回転</span></div>
+      <div class="how-row"><span class="how-key">Bボタン</span><span class="how-val">右回転</span></div>
+      <div class="how-row"><span class="how-key">RBボタン / Y</span><span class="how-val">ホールド</span></div>
+      <div class="how-row"><span class="how-key">STARTボタン</span><span class="how-val">ゲーム開始</span></div>
+      <div class="how-note">※動作確認済み: Xbox ワイヤレスコントローラー</div>
+    </div>
+    <button class="title-sub-btn" id="howto-back-btn">← もどる</button>
+  </div>
+
+  <div id="overlay-msg" class="hidden"></div>
+</div>
+
+<div id="pause-overlay">
+  <h2>PAUSED</h2>
+  <button class="pause-btn" id="btn-resume">▶ プレイを再開</button>
+  <button class="pause-btn" id="btn-restart">↺ はじめからプレイ</button>
+  <button class="pause-btn" id="btn-title">⌂ タイトルにもどる</button>
+</div>
+
+<script>
+// ============================================================
+// Web Audio — 効果音
+// ============================================================
+let audioCtx=null;
+function getAudioCtx(){
+  if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playTone(freq,type,duration,vol,decay){
+  try{
+    const ac=getAudioCtx();
+    if(ac.state==='suspended') ac.resume();
+    const o=ac.createOscillator();
+    const g=ac.createGain();
+    o.connect(g);g.connect(ac.destination);
+    o.type=type||'square';
+    o.frequency.setValueAtTime(freq,ac.currentTime);
+    g.gain.setValueAtTime(vol||0.18,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+(decay||duration));
+    o.start(ac.currentTime);
+    o.stop(ac.currentTime+duration);
+  }catch(e){}
+}
+
+function sfxRotate(){
+  playTone(220,'square',0.06,0.12,0.05);
+  setTimeout(()=>playTone(330,'square',0.05,0.08,0.04),30);
+}
+function sfxLand(){
+  playTone(80,'sawtooth',0.12,0.25,0.10);
+  playTone(120,'sawtooth',0.08,0.15,0.06);
+}
+function sfxHold(){
+  playTone(440,'sine',0.08,0.14,0.07);
+  setTimeout(()=>playTone(330,'sine',0.08,0.10,0.06),50);
+}
+function sfxHardDrop(){
+  playTone(100,'sawtooth',0.06,0.3,0.05);
+  setTimeout(()=>playTone(60,'sawtooth',0.08,0.35,0.07),40);
+}
+
+// コンボ効果音
+function semitone(base, n){ return base * Math.pow(2, n/12); }
+
+function sfxClearNormal(lines, comboCount){
+  const C4 = 784.00; // G5 (さらに1オクターブ上)
+
+  if(comboCount <= 5){
+    const root = semitone(C4, comboCount);
+    const vol  = 0.28 - comboCount * 0.01; // 単音ほど大きく
+    for(let i=0;i<lines;i++){
+      setTimeout(()=>playTone(semitone(root, i*3),'sine',0.20,vol,0.16), i*60);
+    }
+
+  } else if(comboCount <= 9){
+    const semis = comboCount - 6;
+    const root  = semitone(C4, semis);
+    const chord = [root, semitone(root,4), semitone(root,7)];
+    const vol   = 0.18 - semis * 0.005; // 和音は少し下げ
+    chord.forEach((f,i)=>{
+      setTimeout(()=>{
+        playTone(f,   'sine', 0.18, vol,     0.15);
+        playTone(f*2, 'sine', 0.10, vol*0.5, 0.12);
+      }, i*55);
+    });
+
+  } else {
+    const offset = comboCount - 10;
+    const root1  = semitone(C4, 4 + offset);
+    const root2  = semitone(C4, 5 + offset);
+    const chord1 = [root1, semitone(root1,4), semitone(root1,7)];
+    const chord2 = [root2, semitone(root2,4), semitone(root2,7)];
+    const notes  = [...chord1, ...chord2];
+    const vol    = Math.max(0.10, 0.15 - offset * 0.005); // 高コンボほど控えめ
+
+    notes.forEach((f,i)=>{
+      setTimeout(()=>{
+        playTone(f,    'sine',     0.16, vol,     0.14);
+        playTone(f*2,  'sine',     0.10, vol*0.5, 0.11);
+        playTone(f*3,  'triangle', 0.06, vol*0.3, 0.09);
+      }, i*28);
+    });
+  }
+}
+
+// TETRIS (4ライン同時消し)
+function sfxTetris(isB2B){
+  if(isB2B){
+    // B2B TETRIS: 派手なファンファーレ
+    const seq=[[330,0],[415,80],[523,160],[659,240],[830,320]];
+    seq.forEach(([f,t])=>setTimeout(()=>{
+      playTone(f,'square',0.18,0.22,0.16);
+      playTone(f*1.5,'sine',0.14,0.14,0.14);
+    },t));
+  } else {
+    // 通常TETRIS: 上昇アルペジオ
+    const seq=[[262,0],[330,70],[392,140],[523,210],[659,280]];
+    seq.forEach(([f,t])=>setTimeout(()=>playTone(f,'sine',0.18,0.22,0.15),t));
+  }
+}
+
+// Tスピンダブル
+function sfxTspinDouble(isB2B){
+  if(isB2B){
+    // B2B Tスピンダブル: 重厚なコード
+    [220,277,330,440].forEach((f,i)=>setTimeout(()=>{
+      playTone(f,'square',0.28,0.18,0.24);
+      playTone(f*2,'sine',0.20,0.10,0.18);
+    },i*50));
+  } else {
+    // 通常: うねるような2音
+    playTone(277,'square',0.15,0.20,0.13);
+    setTimeout(()=>playTone(415,'square',0.20,0.22,0.17),90);
+    setTimeout(()=>playTone(554,'sine',0.18,0.18,0.15),180);
+  }
+}
+
+// Tスピントリプル
+function sfxTspinTriple(isB2B){
+  if(isB2B){
+    // B2B Tスピントリプル: 最大の爆発音
+    [165,220,330,440,554,659].forEach((f,i)=>setTimeout(()=>{
+      playTone(f,'square',0.22,0.20,0.18);
+      playTone(f*2,'sine',0.18,0.12,0.16);
+      playTone(f*3,'sine',0.10,0.08,0.14);
+    },i*45));
+  } else {
+    [220,330,440,554,659].forEach((f,i)=>setTimeout(()=>{
+      playTone(f,'square',0.20,0.20,0.16);
+      playTone(f*1.5,'sine',0.14,0.10,0.14);
+    },i*55));
+  }
+}
+
+// ============================================================
+// GAME ENGINE
+// ============================================================
+const COLS=10,ROWS=20,HIDDEN=2;
+
+const PIECES={
+  I:{color:'#00f5ff',cells:[
+    [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+    [[0,0,1,0],[0,0,1,0],[0,0,1,0],[0,0,1,0]],
+    [[0,0,0,0],[0,0,0,0],[1,1,1,1],[0,0,0,0]],
+    [[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]],
+  ]},
+  O:{color:'#ffe600',cells:[[[1,1],[1,1]],[[1,1],[1,1]],[[1,1],[1,1]],[[1,1],[1,1]]]},
+  T:{color:'#cc00ff',cells:[
+    [[0,1,0],[1,1,1],[0,0,0]],[[0,1,0],[0,1,1],[0,1,0]],
+    [[0,0,0],[1,1,1],[0,1,0]],[[0,1,0],[1,1,0],[0,1,0]],
+  ]},
+  S:{color:'#adff02',cells:[
+    [[0,1,1],[1,1,0],[0,0,0]],[[0,1,0],[0,1,1],[0,0,1]],
+    [[0,0,0],[0,1,1],[1,1,0]],[[1,0,0],[1,1,0],[0,1,0]],
+  ]},
+  Z:{color:'#ff006e',cells:[
+    [[1,1,0],[0,1,1],[0,0,0]],[[0,0,1],[0,1,1],[0,1,0]],
+    [[0,0,0],[1,1,0],[0,1,1]],[[0,1,0],[1,1,0],[1,0,0]],
+  ]},
+  J:{color:'#0066ff',cells:[
+    [[1,0,0],[1,1,1],[0,0,0]],[[0,1,1],[0,1,0],[0,1,0]],
+    [[0,0,0],[1,1,1],[0,0,1]],[[0,1,0],[0,1,0],[1,1,0]],
+  ]},
+  L:{color:'#ff8c00',cells:[
+    [[0,0,1],[1,1,1],[0,0,0]],[[0,1,0],[0,1,0],[0,1,1]],
+    [[0,0,0],[1,1,1],[1,0,0]],[[1,1,0],[0,1,0],[0,1,0]],
+  ]},
+};
+const PIECE_KEYS=['I','J','L','O','S','T','Z'];
+
+const KICKS_JLSTZ={
+  '0>1':[[-1,0],[-1,1],[0,-2],[-1,-2]],'1>0':[[1,0],[1,-1],[0,2],[1,2]],
+  '1>2':[[1,0],[1,-1],[0,2],[1,2]],'2>1':[[-1,0],[-1,1],[0,-2],[-1,-2]],
+  '2>3':[[1,0],[1,1],[0,-2],[1,-2]],'3>2':[[-1,0],[-1,-1],[0,2],[-1,2]],
+  '3>0':[[-1,0],[-1,-1],[0,2],[-1,2]],'0>3':[[1,0],[1,1],[0,-2],[1,-2]],
+};
+const KICKS_I={
+  '0>1':[[-2,0],[1,0],[-2,-1],[1,2]],'1>0':[[2,0],[-1,0],[2,1],[-1,-2]],
+  '1>2':[[-1,0],[2,0],[-1,2],[2,-1]],'2>1':[[1,0],[-2,0],[1,-2],[-2,1]],
+  '2>3':[[2,0],[-1,0],[2,1],[-1,-2]],'3>2':[[-2,0],[1,0],[-2,-1],[1,2]],
+  '3>0':[[1,0],[-2,0],[1,-2],[-2,1]],'0>3':[[-1,0],[2,0],[-1,2],[2,-1]],
+};
+
+const boardCanvas=document.getElementById('board-canvas');
+const ctx=boardCanvas.getContext('2d');
+const hctx=document.getElementById('hold-canvas').getContext('2d');
+const nctx=document.getElementById('next-canvas').getContext('2d');
+
+let CELL=24;
+
+function setupCanvas(){
+  const sideW=52+6,pad=12;
+  const screenW=document.documentElement.clientWidth||375;
+  const availW=screenW-sideW*2-pad-2;
+  CELL=Math.max(16,Math.floor(availW/COLS));
+  boardCanvas.width=CELL*COLS;
+  boardCanvas.height=CELL*ROWS;
+}
+
+// State
+let board,currentType,currentRot,currentPos;
+let held,holdUsed,nextBag;
+let score,lines,level,combo;
+let dropInterval,dropTimerVal,lockDelay,lockTimer,lockMoves;
+let gameRunning,lastTspin,softDropActive=false;
+let isClearing=false; // ライン消去フラッシュ中フラグ
+let backToBack=false;
+let _lastClearedRowY=0;
+let rafId=null,lastTime=0;
+
+// Touch
+let touchActive=false,tx0=0,ty0=0,tt0=0;
+let swipeConsumedX=0,swipeDir=0,wallDone=false;
+let actionLocked=false; // 排他制御: 壁スナップ済み or ハードドロップ済みなら他の操作を封じる
+// For velocity calc
+let txPrev=0,tPrev=0;
+// Document-wide tap tracking (separate from board swipe tracking)
+let docTx0=0,docTy0=0,docTt0=0;
+const LOCK_PX=10;
+const SWIPE_UP_THRESH=36;
+const SWIPE_TIME=500;
+// Fast flick threshold: px/ms
+const FAST_VX = 2.2;
+// 壁スナップに必要な最低移動距離 (px)
+const FAST_MIN_PX = 30;
+
+// Bag
+function fillBag(){
+  const b=[...PIECE_KEYS];
+  for(let i=b.length-1;i>0;i--){const j=0|Math.random()*(i+1);[b[i],b[j]]=[b[j],b[i]];}
+  nextBag.push(...b);
+}
+function nextPiece(){if(nextBag.length<5)fillBag();return nextBag.shift();}
+
+// Init
+function initGame(){
+  board=Array.from({length:ROWS+HIDDEN},()=>Array(COLS).fill(0));
+  held=null;holdUsed=false;nextBag=[];
+  score=0;lines=0;level=1;combo=-1;backToBack=false;
+  dropInterval=800;dropTimerVal=0;
+  lockDelay=500;lockTimer=0;lockMoves=0;
+  lastTspin=null;gameRunning=true;softDropActive=false;isClearing=false;
+  updateHUD();spawnPiece();
+}
+
+function spawnPiece(){
+  currentType=nextPiece();currentRot=0;
+  const sh=PIECES[currentType].cells[0];
+  currentPos={x:Math.floor((COLS-sh[0].length)/2),y:0};
+  lastTspin=null;
+  if(!canPlace(currentType,currentRot,currentPos.x,currentPos.y)){gameRunning=false;showGameOver();return;}
+  holdUsed=false;
+}
+
+// Collision
+function canPlace(type,rot,px,py){
+  const sh=PIECES[type].cells[rot];
+  for(let r=0;r<sh.length;r++)for(let c=0;c<sh[r].length;c++){
+    if(!sh[r][c])continue;
+    const nx=px+c,ny=py+r;
+    if(nx<0||nx>=COLS||ny>=ROWS+HIDDEN)return false;
+    if(ny>=0&&board[ny][nx])return false;
+  }
+  return true;
+}
+function onGround(t,r,px,py){return !canPlace(t,r,px,py+1);}
+function ghostY(){let g=currentPos.y;while(canPlace(currentType,currentRot,currentPos.x,g+1))g++;return g;}
+
+// Move
+function moveL(){if(!gameRunning)return;if(canPlace(currentType,currentRot,currentPos.x-1,currentPos.y)){currentPos.x--;if(onGround(currentType,currentRot,currentPos.x,currentPos.y))extLock();lastTspin=null;}}
+function moveR(){if(!gameRunning)return;if(canPlace(currentType,currentRot,currentPos.x+1,currentPos.y)){currentPos.x++;if(onGround(currentType,currentRot,currentPos.x,currentPos.y))extLock();lastTspin=null;}}
+function moveToWall(dir){
+  if(!gameRunning)return;
+  // Move one step at a time checking collision properly
+  if(dir<0){
+    while(canPlace(currentType,currentRot,currentPos.x-1,currentPos.y)) currentPos.x--;
+  } else {
+    while(canPlace(currentType,currentRot,currentPos.x+1,currentPos.y)) currentPos.x++;
+  }
+  if(onGround(currentType,currentRot,currentPos.x,currentPos.y)) extLock();
+  lastTspin=null;
+}
+function hardDrop(){
+  if(!gameRunning)return;
+  const g=ghostY();score+=2*(g-currentPos.y);currentPos.y=g;lastTspin=null;
+  sfxHardDrop();
+  lockPiece();
+}
+function extLock(){if(lockMoves<15){lockTimer=0;lockMoves++;}}
+
+function rotate(dir){
+  if(!gameRunning)return;
+  const nr=(currentRot+4+dir)%4,key=`${currentRot}>${nr}`;
+  const kicks=currentType==='I'?KICKS_I[key]:KICKS_JLSTZ[key];
+  const all=[[0,0],...(kicks||[])];
+  for(let ki=0;ki<all.length;ki++){
+    const [kx,ky]=all[ki],nx=currentPos.x+kx,ny=currentPos.y-ky;
+    if(canPlace(currentType,nr,nx,ny)){
+      lastTspin=currentType==='T'?checkTspin(nr,nx,ny,ki):null;
+      currentRot=nr;currentPos={x:nx,y:ny};
+      sfxRotate();
+      if(onGround(currentType,currentRot,currentPos.x,currentPos.y))extLock();
+      return;
+    }
+  }
+}
+
+function checkTspin(rot,px,py,ki){
+  const corners=[[px,py],[px+2,py],[px,py+2],[px+2,py+2]];
+  let f=0;
+  for(const [cx,cy] of corners){if(cx<0||cx>=COLS||cy>=ROWS+HIDDEN)f++;else if(cy>=0&&board[cy][cx])f++;}
+  if(f<3)return null;
+  const front=[[[px,py],[px+2,py]],[[px+2,py],[px+2,py+2]],[[px,py+2],[px+2,py+2]],[[px,py],[px,py+2]]][rot];
+  let ff=0;
+  for(const [cx,cy] of front){if(cx<0||cx>=COLS||cy>=ROWS+HIDDEN)ff++;else if(cy>=0&&board[cy][cx])ff++;}
+  return(ki===4&&ff<2)?'mini':'tspin';
+}
+
+function holdPiece(){
+  if(!gameRunning||holdUsed)return;
+  holdUsed=true;sfxHold();
+  if(!held){held=currentType;spawnPiece();}
+  else{const t=held;held=currentType;currentType=t;currentRot=0;const sh=PIECES[currentType].cells[0];currentPos={x:Math.floor((COLS-sh[0].length)/2),y:0};lastTspin=null;}
+  lockTimer=0;lockMoves=0;
+}
+
+// Lock
+function lockPiece(){
+  if(isClearing) return;
+  const sh=PIECES[currentType].cells[currentRot];
+  for(let r=0;r<sh.length;r++)for(let c=0;c<sh[r].length;c++){
+    if(!sh[r][c])continue;
+    const ny=currentPos.y+r,nx=currentPos.x+c;
+    if(ny>=0)board[ny][nx]=PIECES[currentType].color;
+  }
+  const clearedRows=[];
+  for(let r=0;r<ROWS+HIDDEN;r++){
+    if(board[r].every(c=>c!==0)) clearedRows.push(r);
+  }
+  const cl=clearedRows.length;
+  if(cl===0){
+    sfxLand();
+    calcScore(0,'',0,null);
+    lockTimer=0;lockMoves=0;
+    if(gameRunning)spawnPiece();
+    return;
+  }
+  const capturedTspin=lastTspin;
+  const {label,pts}=calcLabel(cl,capturedTspin);
+  const topClearedRow=clearedRows[0];
+  const clearedRowY=Math.max(0,topClearedRow-HIDDEN)*CELL;
+  const isTspin=capturedTspin==='tspin';
+  const isTetris=(cl===4&&!isTspin);
+  const isB2B=backToBack&&(isTetris||(isTspin&&cl>=2));
+  if(isTspin&&cl===3)      sfxTspinTriple(isB2B);
+  else if(isTspin&&cl===2) sfxTspinDouble(isB2B);
+  else if(isTetris)        sfxTetris(isB2B);
+  else                     sfxClearNormal(cl,Math.max(0,combo));
+  actualClearLines(clearedRows);
+  calcScore(cl,label,pts,capturedTspin);
+  lockTimer=0;lockMoves=0;
+  const isSingle=label.toUpperCase().includes('SINGLE')&&!label.toUpperCase().includes('T-SPIN');
+  const displayY=isSingle?null:clearedRowY;
+  spawnComboDisplay(label,combo,cl,displayY,clearedRows);
+  if(gameRunning)spawnPiece();
+}
+
+let flashingRows=[]; // フラッシュ中の行インデックス
+let flashPhase=0;
+
+function actualClearLines(rows){
+  const rowSet = new Set(rows);
+  // 消えない行だけ残す
+  const remaining = board.filter((_,i) => !rowSet.has(i));
+  // 上部に空行を補充
+  while(remaining.length < ROWS + HIDDEN){
+    remaining.unshift(Array(COLS).fill(0));
+  }
+  board.length = 0;
+  for(const r of remaining) board.push(r);
+}
+
+function calcLabel(cl, tspin){
+  const isTspin=tspin==='tspin';
+  const isMini=tspin==='mini';
+  const isTetris=(cl===4&&!isTspin);
+  const isB2B=backToBack&&(isTetris||(isTspin&&cl>=2));
+  const b2bBonus=isB2B?0.5:0;
+  let pts=0,label='';
+  if(isTspin){
+    const base=[400,800,1200,1600][cl-1]||1600;
+    pts=Math.floor(base*(1+b2bBonus))*level;
+    label=['T-SPIN SINGLE','T-SPIN DOUBLE','T-SPIN TRIPLE'][cl-1]||'T-SPIN';
+    if(isB2B) label='BACK-TO-BACK\n'+label;
+  }else if(isMini){
+    pts=([100,300,400][cl-1]||400)*level;label='T-SPIN MINI';
+  }else{
+    const base=[100,300,500,800][cl-1]||800;
+    pts=Math.floor(base*(1+b2bBonus))*level;
+    label=['SINGLE','DOUBLE','TRIPLE','TETRIS'][cl-1]||'CLEAR';
+    if(isB2B&&isTetris) label='BACK-TO-BACK TETRIS';
+  }
+  return {label,pts};
+}
+
+function clearLines(){
+  const full = [];
+  for(let r=0;r<ROWS+HIDDEN;r++) if(board[r].every(c=>c!==0)) full.push(r);
+  if(full.length===0) return 0;
+  actualClearLines(full);
+  return full.length;
+}
+
+// Score
+function calcScore(cl, label, pts, capturedTspin){
+  if(cl===0){
+    if(lastTspin){const p=(lastTspin==='mini'?100:400)*level;score+=p;showAction(lastTspin==='mini'?'T-SPIN MINI':'T-SPIN',p,0,null,[]);}
+    combo=-1;lastTspin=null;updateHUD();return;
+  }
+  combo++;
+  lines+=cl;level=Math.floor(lines/10)+1;
+  dropInterval=Math.max(80,800-(level-1)*70);
+
+  const isTspin = capturedTspin==='tspin';
+  const isTetris=(cl===4&&!isTspin);
+
+  let comboPts=0;
+  if(combo>0){comboPts=50*combo*level;}
+  score+=pts+comboPts;
+
+  // B2B更新
+  if(isTetris||(isTspin&&cl>=2)) backToBack=true;
+  else if(capturedTspin!=='mini') backToBack=false;
+
+  lastTspin=null;updateHUD();
+  if(pts>0) spawnScorePopup(pts);
+}
+
+function updateHUD(){
+  document.getElementById('score-display').textContent=score.toLocaleString();
+  document.getElementById('lines-val').textContent=lines;
+  document.getElementById('level-val').textContent=level;
+}
+
+// ============================================================
+// 派手コンボ表示システム
+// ============================================================
+
+// コンボ数→色
+function comboColor(c){
+  if(c>=16) return {color:'#FFD700',shadow:'0 0 14px #FFD700, 0 0 28px #FFA500', gradient:'linear-gradient(180deg,#ffffff,#FFD700,#FFE566,#FFD700,#ffffff)'};  // 金メタリック
+  if(c>=13) return {color:'#ff4444',shadow:'0 0 14px #ff2020, 0 0 28px #ff6060', gradient:'linear-gradient(180deg,#ffffff,#ff4444,#ff9999,#ff4444,#ffffff)'};  // 赤メタリック
+  if(c>=10) return {color:'#4488ff',shadow:'0 0 14px #4488ff, 0 0 28px #0044cc', gradient:'linear-gradient(180deg,#ffffff,#4488ff,#aaccff,#4488ff,#ffffff)'};  // 青メタリック
+  if(c>=7)  return {color:'#adff02',shadow:'0 0 14px #adff02, 0 0 28px #88cc00', gradient:'linear-gradient(180deg,#ffffff,#adff02,#ddff99,#adff02,#ffffff)'};  // 黄緑メタリック
+  if(c>=4)  return {color:'#ffe600',shadow:'0 0 14px #ffe600, 0 0 28px #ffb300', gradient:null};  // 黄（グラデなし）
+  return      {color:'#ffffff',shadow:'none', gradient:null};  // 白
+}
+
+// コンボ数→フォントサイズ
+function comboFontSize(c){
+  if(c>=10) return 52;
+  if(c>=8)  return 46;
+  if(c>=6)  return 40;
+  if(c>=4)  return 34;
+  if(c>=2)  return 28;
+  if(c>=1)  return 24;
+  return 20;
+}
+
+// ラベル種別ごとのスタイル
+function labelStyle(label){
+  const u = label.toUpperCase();
+  if(u.includes('TETRIS') && !u.includes('T-SPIN')){
+    // 虹色グラデーション + キラキラ
+    return {
+      gradient: 'linear-gradient(90deg,#ff0000,#ff7700,#ffee00,#00ff88,#00cfff,#cc00ff)',
+      shadow: '0 0 16px #fff, 0 0 32px rgba(255,255,255,0.5)',
+      scale: 3.0,
+      anim: 'rainbow'
+    };
+  }
+  if(u.includes('T-SPIN DOUBLE') || u.includes('T-SPIN TRIPLE')){
+    return {
+      gradient: 'linear-gradient(90deg,#1a6eff,#00cfff,#7fffff,#00cfff,#1a6eff)',
+      shadow: '0 0 16px #00cfff, 0 0 32px #0044ff',
+      scale: 3.0,
+      anim: 'metalblue'
+    };
+  }
+  if(u.includes('BACK-TO-BACK')){
+    return {
+      gradient: 'linear-gradient(90deg,#b8860b,#FFD700,#fffacd,#FFD700,#b8860b)',
+      shadow: '0 0 16px #FFD700, 0 0 32px #FFA500',
+      scale: 3.0,
+      anim: 'gold'
+    };
+  }
+  return null; // 通常
+}
+
+// フィールド下半分の埋まり率を計算
+function calcBottomFillRatio(){
+  const halfStart = HIDDEN + Math.floor(ROWS/2);
+  let filled=0, total=0;
+  for(let r=halfStart;r<ROWS+HIDDEN;r++){
+    for(let c=0;c<COLS;c++){
+      total++;
+      if(board[r][c]) filled++;
+    }
+  }
+  return filled/total;
+}
+
+// 消えた行のY座標(px)を取得 (clearLines後なので近似)
+function getClearedRowY(clearedCount){
+  // ロック直前のcurrentPos.yを使って近似
+  const row = Math.min(currentPos.y + PIECES[currentType].cells[currentRot].length - 1, ROWS-1);
+  return Math.max(0, row - HIDDEN) * CELL;
+}
+
+let comboPopTimer = null;
+
+function showAction(label, pts, clearedLines, clearedRowY){
+  // スコアポップアップ
+  if(pts>0) spawnScorePopup(pts);
+
+  // コンボ表示
+  spawnComboDisplay(label, combo, clearedLines, clearedRowY);
+}
+
+// フォントサイズ計算: DOM操作なし、文字数と幅/高さから近似
+// Orbitronの文字幅は概ねfontSize * 0.65程度
+function fitFontSize(text, maxW, maxH, minFs, maxFs){
+  const charW = 0.65; // Orbitronの文字幅係数
+  const byWidth  = maxW / (text.length * charW);
+  const byHeight = maxH;
+  return Math.max(minFs, Math.min(maxFs, Math.floor(Math.min(byWidth, byHeight))));
+}
+
+function spawnComboDisplay(label, comboCount, clearedLines, clearedRowY){
+  const container = document.getElementById('board-container');
+  container.querySelectorAll('.combo-display').forEach(e=>e.remove());
+  clearTimeout(comboPopTimer);
+
+  const boardH = boardCanvas.height;
+  const boardW = boardCanvas.width;
+  const labelUp = label.toUpperCase();
+  const isSingle  = labelUp.includes('SINGLE') && !labelUp.includes('T-SPIN');
+  const isTspin   = labelUp.includes('T-SPIN');
+  const isB2B     = labelUp.includes('BACK-TO-BACK');
+  const isTetris  = labelUp.includes('TETRIS') && !isTspin;
+  const isB2BTet  = isB2B && isTetris;
+  const clearedH  = Math.max(1, clearedLines) * CELL;
+  const cc = comboColor(comboCount);
+
+  // ---- TETRIS: 消えた行に表示 ----
+  if(isTetris && !isB2BTet){
+    const el = makeEl(0, clearedRowY, boardW, clearedH);
+    const fs = fitFontSize('TETRIS!', boardW-4, clearedH*0.72, 12, 300);
+    const lbl = makeLbl(fs);
+    applyGradient(lbl,'linear-gradient(90deg,#ff0000,#ff7700,#ffee00,#00ff88,#00cfff,#cc00ff)');
+    lbl.style.filter='drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 14px #fff) drop-shadow(0 0 30px rgba(255,255,255,0.8))';
+    lbl.textContent='TETRIS!';
+    el.appendChild(lbl);
+    addComboNum(el, comboCount, cc, clearedH*0.26, boardW);
+    container.appendChild(el);
+    autoRemove(el, 1500);
+    return;
+  }
+
+  // ---- B2B TETRIS: 中央にB2Bがズームアウトフェード → 行にTETRIS ----
+  if(isB2BTet){
+    const b2bEl = makeEl(boardH*0.35, null, boardW, 60);
+    b2bEl.style.zIndex='32';
+    const b2bFs = fitFontSize('BACK-TO-BACK', boardW-4, 55, 10, 80);
+    const b2bLbl = makeLbl(b2bFs, 'b2b-approach');
+    applyGradient(b2bLbl,'linear-gradient(90deg,#b8860b,#FFD700,#fffacd,#FFD700,#b8860b)');
+    b2bLbl.style.filter='drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 10px #FFD700) drop-shadow(0 0 20px #FFA500)';
+    b2bLbl.textContent='BACK-TO-BACK';
+    b2bEl.appendChild(b2bLbl);
+    container.appendChild(b2bEl);
+    setTimeout(()=>b2bEl.remove(), 950);
+
+    // TETRISも同時に表示
+    const el = makeEl(0, clearedRowY, boardW, clearedH);
+    const fs = fitFontSize('TETRIS!', boardW-4, clearedH*0.72, 12, 300);
+    const lbl = makeLbl(fs);
+    applyGradient(lbl,'linear-gradient(90deg,#ff0000,#ff7700,#ffee00,#00ff88,#00cfff,#cc00ff)');
+    lbl.style.filter='drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 14px #fff) drop-shadow(0 0 30px rgba(255,255,255,0.8))';
+    lbl.textContent='TETRIS!';
+    el.appendChild(lbl);
+    addComboNum(el, comboCount, cc, clearedH*0.26, boardW);
+    container.appendChild(el);
+    autoRemove(el, 1400);
+    return;
+  }
+
+  // ---- T-SPIN系: 中央にパルスアニメ ----
+  if(isTspin){
+    const cleanLbl = label.replace(/BACK-TO-BACK/i,'').replace(/^\s+/,'').trim();
+    const rankPart = cleanLbl.replace('T-SPIN','').trim();
+    const isTspinSingle = rankPart === 'SINGLE';
+
+    // T-SPIN SINGLEはシンプル表示
+    if(isTspinSingle){
+      const el = makeEl(boardH*0.35, null, boardW, 80);
+      addComboBg(el);
+
+      // 1行目: T-SPIN SINGLE
+      const s1=document.createElement('div');
+      s1.style.cssText='font-size:16px;color:#fff;letter-spacing:1px;white-space:nowrap;paint-order:stroke fill;-webkit-text-stroke:0.07em rgba(0,0,0,0.9);text-align:center;';
+      s1.textContent='T-SPIN SINGLE';
+      el.appendChild(s1);
+
+      // 2行目: コンボ数（独立）
+      if(comboCount>0){
+        const numEl=document.createElement('div');
+        numEl.className='combo-num';
+        const snFs=Math.max(18,comboFontSize(comboCount)*0.8);
+        const glowStyle=comboCount>=7?'filter:drop-shadow(0 0 6px #fff) drop-shadow(0 0 14px #fff);':'';
+        if(cc.gradient){
+          numEl.style.cssText='font-size:'+snFs+'px;background:'+cc.gradient+';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-top:6px;text-align:center;'+glowStyle;
+        } else {
+          numEl.style.cssText='font-size:'+snFs+'px;color:'+cc.color+';margin-top:6px;text-align:center;';
+        }
+        numEl.textContent='×'+comboCount+' COMBO!';
+        el.appendChild(numEl);
+      }
+      container.appendChild(el);
+      autoRemove(el, 1400);
+      return;
+    }
+
+    const el = makeEl(boardH*0.3, null, boardW, 130);
+    addComboBg(el);
+
+    if(isB2B){
+      const b2bFs = fitFontSize('BACK-TO-BACK', boardW-4, 28, 8, 50);
+      const b2bLbl = makeLbl(b2bFs, 'tspin-pulse');
+      applyGradient(b2bLbl,'linear-gradient(90deg,#b8860b,#FFD700,#fffacd,#FFD700,#b8860b)');
+      b2bLbl.style.filter='drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 10px #FFD700)';
+      b2bLbl.textContent='BACK-TO-BACK';
+      el.appendChild(b2bLbl);
+    }
+
+    const lineText = 'T-SPIN ' + rankPart + '!';
+    const lineFs = fitFontSize(lineText, boardW-4, isB2B?44:60, 10, 130);
+    const lineEl = document.createElement('div');
+    lineEl.className = 'combo-label tspin-pulse';
+    lineEl.style.cssText = 'font-size:'+lineFs+'px;display:flex;align-items:baseline;justify-content:center;gap:0.15em;white-space:nowrap;';
+
+    const tPart = document.createElement('span');
+    tPart.textContent = 'T-SPIN ';
+    tPart.style.cssText = 'color:#fff;-webkit-text-stroke:0.05em rgba(0,0,0,0.9);paint-order:stroke fill;filter:drop-shadow(0 0 8px #ff69b4) drop-shadow(0 0 20px #ff1493);';
+
+    const rPart = document.createElement('span');
+    rPart.textContent = rankPart + '!';
+    if(rankPart==='TRIPLE'){
+      rPart.style.cssText = 'background:linear-gradient(90deg,#b8860b,#FFD700,#fffacd,#FFD700,#b8860b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 12px #FFD700) drop-shadow(0 0 24px #FFA500);animation:blinkTriple 0.6s steps(1) 1;';
+    } else {
+      rPart.style.cssText = 'background:linear-gradient(90deg,#c8c8c8,#fff,#e0e0e0,#fff,#c8c8c8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(0 0 12px #fff) drop-shadow(0 0 24px #aaa);animation:blinkDouble 0.6s steps(1) 1;';
+    }
+
+    lineEl.appendChild(tPart);
+    lineEl.appendChild(rPart);
+    el.appendChild(lineEl);
+
+    if(comboCount>0){
+      const numEl=document.createElement('div');
+      numEl.className='combo-num';
+      const glowStyle = comboCount>=7 ? 'filter:drop-shadow(0 0 6px #fff) drop-shadow(0 0 14px #fff);' : '';
+      if(cc.gradient){
+        numEl.style.cssText='font-size:16px;background:'+cc.gradient+';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-top:8px;'+glowStyle;
+      } else {
+        numEl.style.cssText='font-size:16px;color:'+cc.color+';margin-top:8px;';
+      }
+      numEl.textContent='×'+comboCount+' COMBO';
+      el.appendChild(numEl);
+    }
+    container.appendChild(el);
+    autoRemove(el, 1400);
+    return;
+  }
+
+  // ---- SINGLE / DOUBLE / TRIPLE: 中央に表示 ----
+  const centerY = boardH * 0.38;
+  const el = makeEl(centerY, null, boardW, 80);
+  addComboBg(el);
+  if(isSingle){
+    // SINGLE表記（コンボなし or コンボあり）
+    const s1=document.createElement('div');
+    s1.style.cssText='font-size:13px;color:#fff;letter-spacing:1px;text-align:center;paint-order:stroke fill;-webkit-text-stroke:0.08em rgba(0,0,0,0.95);';
+    s1.textContent='SINGLE';
+    el.appendChild(s1);
+    if(comboCount>0){
+      const numEl=document.createElement('div');
+      numEl.className='combo-num';
+      const snFs=Math.max(20,comboFontSize(comboCount)*0.85);
+      const glowStyle=comboCount>=7?'filter:drop-shadow(0 0 6px #fff) drop-shadow(0 0 14px #fff);':'';
+      if(cc.gradient){
+        numEl.style.cssText='font-size:'+snFs+'px;background:'+cc.gradient+';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-top:4px;text-align:center;'+glowStyle;
+      } else {
+        numEl.style.cssText='font-size:'+snFs+'px;color:'+cc.color+';margin-top:4px;text-align:center;';
+      }
+      numEl.textContent='×'+comboCount+' COMBO!';
+      el.appendChild(numEl);
+    }
+  } else {
+    // DOUBLE / TRIPLE: サイズは半分程度
+    const cleanLbl = label.split('\n')[0].trim();
+    const mainFs = fitFontSize(cleanLbl+'!', boardW-4, 40, 12, 70);
+    const lbl = makeLbl(mainFs, 'explode-zoom');
+    if(cc.gradient){
+      applyGradient(lbl, cc.gradient);
+      const glow = comboCount>=7 ? 'drop-shadow(0 0 8px #fff) drop-shadow(0 0 16px #fff)' : 'drop-shadow(0 0 8px '+cc.color+')';
+      lbl.style.filter='drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) '+glow;
+    } else {
+      lbl.style.color=cc.color;
+      lbl.style.textShadow=cc.shadow;
+      lbl.style.filter='drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9))';
+    }
+    lbl.textContent=cleanLbl+'!';
+    el.appendChild(lbl);
+    // コンボ数は独立要素
+    if(comboCount>0){
+      const numEl=document.createElement('div');
+      numEl.className='combo-num';
+      const glowStyle = comboCount>=7 ? 'filter:drop-shadow(0 0 6px #fff) drop-shadow(0 0 14px #fff);' : '';
+      if(cc.gradient){
+        numEl.style.cssText='font-size:18px;background:'+cc.gradient+';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-top:4px;'+glowStyle;
+      } else {
+        numEl.style.cssText='font-size:18px;color:'+cc.color+';margin-top:4px;';
+      }
+      numEl.textContent='×'+comboCount+' COMBO';
+      el.appendChild(numEl);
+    }
+  }
+  container.appendChild(el);
+  autoRemove(el, 1500);
+}
+
+function addComboBg(el){
+  const bg=document.createElement('div');
+  bg.className='combo-bg';
+  el.appendChild(bg);
+}
+function makeEl(topPx, fixedY, w, h){
+  const el=document.createElement('div');
+  el.className='combo-display';
+  const top = (fixedY!==null&&fixedY!==undefined) ? fixedY : topPx;
+  el.style.top=top+'px';
+  el.style.height=h+'px';
+  // left:50% + translateX(-50%) はCSSで設定済み
+  // overflow:visible でコンテナ外にはみ出せる
+  return el;
+}
+function makeLbl(fs, animClass){
+  const el=document.createElement('div');
+  el.className='combo-label'+(animClass?' '+animClass:'');
+  el.style.fontSize=fs+'px';
+  return el;
+}
+function addComboNum(parent, comboCount, cc, maxH, boardW){
+  if(comboCount<=0) return;
+  const numFs=fitFontSize('×'+comboCount+' COMBO', boardW-4, maxH, 8, 55);
+  const numEl=document.createElement('div');
+  numEl.className='combo-num';
+  numEl.style.marginTop='6px';
+  const glowStyle = comboCount>=7 ? 'filter:drop-shadow(0 0 6px #fff) drop-shadow(0 0 14px #fff);' : '';
+  if(cc.gradient){
+    numEl.style.cssText='font-size:'+numFs+'px;background:'+cc.gradient+';-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-top:6px;'+glowStyle;
+  } else {
+    numEl.style.cssText='font-size:'+numFs+'px;color:'+cc.color+';margin-top:6px;';
+  }
+  numEl.textContent='×'+comboCount+' COMBO';
+  parent.appendChild(numEl);
+}
+function autoRemove(el, ms){
+  comboPopTimer=setTimeout(()=>{
+    el.style.opacity='0';
+    el.style.transition='opacity 0.4s';
+    setTimeout(()=>el.remove(),400);
+  }, ms);
+}
+
+function applyGradient(el, grad){
+  el.style.background = grad;
+  el.style.webkitBackgroundClip = 'text';
+  el.style.webkitTextFillColor = 'transparent';
+  el.style.backgroundClip = 'text';
+  // グラデーション文字の縁取り: 複数のdrop-shadowで暗い輪郭を作る
+  const outline = 'drop-shadow(1px 1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(1px -1px 0 rgba(0,0,0,0.9)) drop-shadow(-1px 1px 0 rgba(0,0,0,0.9))';
+  el.dataset.outlineFilter = outline; // 後でglowと合成できるよう保存
+}
+
+function spawnScorePopup(pts){
+  const container=document.getElementById('board-container');
+  const pop=document.createElement('div');
+  pop.className='score-popup';
+  const col=pts>=800?'#ff006e':pts>=300?'#adff02':'#00f5ff';
+  const sz=pts>=800?'18px':pts>=300?'15px':'13px';
+  pop.style.color=col;pop.style.fontSize=sz;pop.style.textShadow=`0 0 12px ${col}`;
+  pop.textContent='+'+pts.toLocaleString();pop.style.top='55%';
+  container.appendChild(pop);
+  pop.addEventListener('animationend',()=>pop.remove());
+}
+
+// Game Loop
+const GP = {
+  // ボタン状態管理
+  prev: {},         // 前フレームのボタン状態
+  dasTimer: 0,      // DAS (Delayed Auto Shift) タイマー
+  dasActive: false,
+  dasDir: 0,        // -1=左, 1=右
+  DAS_DELAY: 150,   // ms押しっぱなしで連続移動開始
+  DAS_REPEAT: 50,   // 連続移動間隔
+
+  // Xboxボタン番号
+  BTN: {
+    A:0, B:1, X:2, Y:3,
+    LB:4, RB:5,
+    LT:6, RT:7,
+    SELECT:8, START:9,
+    L3:10, R3:11,
+    UP:12, DOWN:13, LEFT:14, RIGHT:15,
+  },
+
+  pressed(gp, idx){ return gp.buttons[idx]?.pressed; },
+
+  poll(dt){
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let gp = null;
+    for(const g of gamepads){ if(g){ gp=g; break; } }
+    if(!gp) return;
+
+    const B = this.BTN;
+    const cur = {};
+
+    // ---- 方向キー / 左スティック ----
+    const axisX = gp.axes[0] || 0;
+    const axisY = gp.axes[1] || 0;
+    const dLeft  = this.pressed(gp, B.LEFT)  || axisX < -0.5;
+    const dRight = this.pressed(gp, B.RIGHT) || axisX >  0.5;
+    const dDown  = this.pressed(gp, B.DOWN)  || axisY >  0.5;
+    const dUp    = this.pressed(gp, B.UP)    || axisY < -0.5;
+
+    cur['left']  = dLeft;
+    cur['right'] = dRight;
+    cur['down']  = dDown;
+    cur['up']    = dUp;
+    cur['a']     = this.pressed(gp, B.A);
+    cur['b']     = this.pressed(gp, B.B);
+    cur['x']     = this.pressed(gp, B.X);
+    cur['y']     = this.pressed(gp, B.Y);
+    cur['lb']    = this.pressed(gp, B.LB);
+    cur['rb']    = this.pressed(gp, B.RB);
+    cur['start'] = this.pressed(gp, B.START);
+
+    if(!gameRunning){
+      // 任意ボタンでゲーム開始
+      const anyBtn = cur['start']||cur['a']||cur['b']||cur['x']||cur['y']||cur['lb']||cur['rb'];
+      if(anyBtn && !Object.values(this.prev).some(v=>v)) startGame();
+      this.prev = cur;
+      return;
+    }
+
+    // ---- ハードドロップ: 十字キー上 ----
+    if(cur['up'] && !this.prev['up']){ hardDrop(); }
+
+    // ---- 回転: B→右, A→左 ----
+    if(cur['b']  && !this.prev['b'])  rotate(1);
+    if(cur['a']  && !this.prev['a'])  rotate(-1);
+
+    // ---- ホールド: RB / Y ----
+    if((cur['rb'] && !this.prev['rb']) || (cur['y'] && !this.prev['y'])){ holdPiece(); }
+
+    // ---- 落下加速: 下押しっぱなし ----
+    softDropActive = dDown;
+
+    // ---- 左右移動: DAS (押した瞬間1マス + 一定時間後に連続) ----
+    const hDir = dLeft ? -1 : dRight ? 1 : 0;
+    if(hDir !== 0){
+      if(this.dasDir !== hDir){
+        // 方向が変わった/押し始め → 即1マス移動
+        this.dasDir   = hDir;
+        this.dasTimer = 0;
+        this.dasActive = false;
+        if(hDir < 0) moveL(); else moveR();
+      } else {
+        this.dasTimer += dt;
+        if(!this.dasActive && this.dasTimer >= this.DAS_DELAY){
+          this.dasActive = true;
+          this.dasTimer  = 0;
+        }
+        if(this.dasActive && this.dasTimer >= this.DAS_REPEAT){
+          this.dasTimer = 0;
+          if(hDir < 0) moveL(); else moveR();
+        }
+      }
+    } else {
+      this.dasDir    = 0;
+      this.dasTimer  = 0;
+      this.dasActive = false;
+    }
+
+    this.prev = cur;
+  }
+};
+
+function gameLoop(ts){
+  if(!gameRunning)return;
+  const dt=Math.min(ts-lastTime,100);lastTime=ts;
+  GP.poll(dt);
+
+  if(!isClearing){
+    const interval=softDropActive?Math.min(dropInterval,30):dropInterval;
+    if(onGround(currentType,currentRot,currentPos.x,currentPos.y)){
+      lockTimer+=dt;
+      if(lockTimer>=lockDelay){lockPiece();if(gameRunning){render();rafId=requestAnimationFrame(gameLoop);}return;}
+    }else{
+      lockTimer=0;dropTimerVal+=dt;
+      if(dropTimerVal>=interval){dropTimerVal=0;
+        if(canPlace(currentType,currentRot,currentPos.x,currentPos.y+1)){
+          currentPos.y++;if(softDropActive){score+=1;updateHUD();}
+        }
+      }
+    }
+  }
+
+  render();rafId=requestAnimationFrame(gameLoop);
+}
+
+// Render
+function render(){
+  ctx.fillStyle='#0a0a0f';ctx.fillRect(0,0,boardCanvas.width,boardCanvas.height);
+  ctx.strokeStyle='rgba(255,255,255,0.03)';ctx.lineWidth=0.5;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)ctx.strokeRect(c*CELL,r*CELL,CELL,CELL);
+  // Board cells (フラッシュ行は黒く空白に)
+  for(let r=HIDDEN;r<ROWS+HIDDEN;r++){
+    if(flashingRows.includes(r)){
+      ctx.fillStyle='#0a0a0f';
+      ctx.fillRect(0,(r-HIDDEN)*CELL,boardCanvas.width,CELL);
+    } else {
+      for(let c=0;c<COLS;c++) if(board[r][c]) drawCell(ctx,c,r-HIDDEN,board[r][c]);
+    }
+  }
+  if(currentType && !isClearing){
+    const gy=ghostY(),gs=PIECES[currentType].cells[currentRot],gc=PIECES[currentType].color;
+    for(let r=0;r<gs.length;r++)for(let c=0;c<gs[r].length;c++){
+      if(!gs[r][c])continue;
+      const dy=gy+r-HIDDEN,dx=currentPos.x+c;if(dy<0)continue;
+      ctx.fillStyle=gc+'22';ctx.fillRect(dx*CELL+1,dy*CELL+1,CELL-2,CELL-2);
+      ctx.strokeStyle=gc+'55';ctx.lineWidth=1;ctx.strokeRect(dx*CELL+1,dy*CELL+1,CELL-2,CELL-2);
+    }
+    const sh=PIECES[currentType].cells[currentRot],col=PIECES[currentType].color,lr=lockTimer/lockDelay;
+    for(let r=0;r<sh.length;r++)for(let c=0;c<sh[r].length;c++){
+      if(!sh[r][c])continue;
+      const dy=currentPos.y+r-HIDDEN,dx=currentPos.x+c;if(dy<0)continue;
+      drawCell(ctx,dx,dy,col,lr);
+    }
+  }
+  renderHold();renderNext();
+}
+
+function drawCell(ctx,cx,cy,color,lr){
+  lr=lr||0;const x=cx*CELL,y=cy*CELL,s=CELL;
+  const a=lr>0.6?1-(lr-0.6)*2*0.35:1;
+  ctx.globalAlpha=a;
+  ctx.fillStyle=color;ctx.fillRect(x+1,y+1,s-2,s-2);
+  const g=ctx.createLinearGradient(x,y,x,y+s);
+  g.addColorStop(0,'rgba(255,255,255,0.22)');g.addColorStop(1,'rgba(0,0,0,0.22)');
+  ctx.fillStyle=g;ctx.fillRect(x+1,y+1,s-2,s-2);
+  ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1;ctx.strokeRect(x+2,y+2,s-4,s-4);
+  ctx.globalAlpha=1;
+}
+
+function miniPiece(mctx,type,cw,ch){
+  mctx.fillStyle='#12121a';mctx.fillRect(0,0,cw,ch);if(!type)return;
+  const sh=PIECES[type].cells[0],col=PIECES[type].color,rows=sh.length,cols=sh[0].length;
+  const cs=Math.min(Math.floor(cw/cols),Math.floor(ch/rows),12);
+  const ox=Math.floor((cw-cols*cs)/2),oy=Math.floor((ch-rows*cs)/2);
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    if(!sh[r][c])continue;
+    const x=ox+c*cs,y=oy+r*cs;
+    mctx.fillStyle=col;mctx.fillRect(x+1,y+1,cs-2,cs-2);
+    const g=mctx.createLinearGradient(x,y,x,y+cs);
+    g.addColorStop(0,'rgba(255,255,255,0.18)');g.addColorStop(1,'rgba(0,0,0,0.18)');
+    mctx.fillStyle=g;mctx.fillRect(x+1,y+1,cs-2,cs-2);
+  }
+}
+function renderHold(){miniPiece(hctx,held,42,42);if(held&&holdUsed){hctx.fillStyle='rgba(0,0,0,0.5)';hctx.fillRect(0,0,42,42);}}
+function renderNext(){
+  nctx.fillStyle='#12121a';nctx.fillRect(0,0,42,90);
+  nextBag.slice(0,2).forEach((type,i)=>{
+    const sh=PIECES[type].cells[0],col=PIECES[type].color,rows=sh.length,cols=sh[0].length,cs=10;
+    const ox=Math.floor((42-cols*cs)/2),oy=2+i*45+Math.floor((40-rows*cs)/2);
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+      if(!sh[r][c])continue;
+      const x=ox+c*cs,y=oy+r*cs;
+      nctx.fillStyle=col;nctx.fillRect(x+1,y+1,cs-2,cs-2);
+      const g=nctx.createLinearGradient(x,y,x,y+cs);
+      g.addColorStop(0,'rgba(255,255,255,0.18)');g.addColorStop(1,'rgba(0,0,0,0.18)');
+      nctx.fillStyle=g;nctx.fillRect(x+1,y+1,cs-2,cs-2);
+    }
+  });
+}
+
+// ============================================================
+// Touch controls
+// ============================================================
+// タップ判定: 指が動いた合計距離がこれ以下ならタップとみなす
+const TAP_MOVE_THRESH = 12; // px
+
+function isExcluded(el){
+  return el.closest('#hold-box') || el.closest('#overlay') || el.closest('#pause-overlay');
+}
+
+document.addEventListener('touchstart',e=>{
+  const t=e.touches[0];
+  // doc-wide tap tracking (常に更新)
+  docTx0=t.clientX; docTy0=t.clientY; docTt0=Date.now();
+
+  // ホールド・オーバーレイは操作対象外
+  if(isExcluded(e.target)) return;
+
+  tx0=t.clientX;ty0=t.clientY;tt0=Date.now();
+  txPrev=t.clientX;tPrev=tt0;
+  swipeConsumedX=0;swipeDir=0;touchActive=true;softDropActive=false;
+  wallDone=false;actionLocked=false;
+},{passive:true});
+
+document.addEventListener('touchmove',e=>{
+  if(!gameRunning||!touchActive)return;
+  if(isExcluded(e.target)) return;
+
+  const t=e.touches[0];
+  const now=Date.now();
+  const dx=t.clientX-tx0, dy=t.clientY-ty0;
+  const adx=Math.abs(dx), ady=Math.abs(dy);
+
+  const dtMove=Math.max(1,now-tPrev);
+  const vx=Math.abs(t.clientX-txPrev)/dtMove;
+  txPrev=t.clientX; tPrev=now;
+
+  // 方向決定
+  if(swipeDir===0){
+    if(adx>LOCK_PX||ady>LOCK_PX) swipeDir=adx>=ady?1:-1;
+    return;
+  }
+
+  // 横スワイプ or 落下中の高速横
+  const isDroppingH = swipeDir===-1 && vx>=1.2;
+  const isHorizFast = swipeDir===1  && vx>=FAST_VX && adx>=FAST_MIN_PX;
+
+  if(swipeDir===1 || isDroppingH || isHorizFast){
+    if(!wallDone && (swipeDir===-1 ? vx>=1.2 : (vx>=FAST_VX && adx>=FAST_MIN_PX))){
+      wallDone=true;
+      actionLocked=true;
+      softDropActive=false;
+      moveToWall(dx<0?-1:1);
+      swipeConsumedX=(dx<0)?-COLS:COLS;
+      return;
+    }
+    if(wallDone) return;
+    if(swipeDir===1){
+      const sensitivity=1.5;
+      const targetCells=Math.round(dx/(CELL*sensitivity));
+      const delta=targetCells-swipeConsumedX;
+      if(delta>0){for(let i=0;i<delta;i++)moveR();swipeConsumedX+=delta;}
+      else if(delta<0){for(let i=0;i<-delta;i++)moveL();swipeConsumedX+=delta;}
+    }
+  }
+
+  // 縦スワイプ: 落下加速
+  if(swipeDir===-1 && !actionLocked){
+    softDropActive=(dy>20);
+  }
+},{passive:true});
+
+document.addEventListener('touchend',e=>{
+  if(isExcluded(e.target)){ softDropActive=false; return; }
+  softDropActive=false;
+  if(!gameRunning){ touchActive=false; wallDone=false; actionLocked=false; return; }
+
+  const t=e.changedTouches[0];
+  const dx=t.clientX-tx0, dy=t.clientY-ty0;
+  const elapsed=Date.now()-tt0;
+  const totalMove=Math.max(Math.abs(dx),Math.abs(dy));
+
+  // 上フリック → ハードドロップ
+  if(!actionLocked && totalMove>=TAP_MOVE_THRESH){
+    if(swipeDir!==1 && dy<-SWIPE_UP_THRESH && elapsed<SWIPE_TIME){
+      actionLocked=true;
+      hardDrop();
+    }
+  }
+
+  // タップ → 回転
+  if(totalMove<TAP_MOVE_THRESH && elapsed<300 && !e.target.closest('#overlay')){
+    const screenMid=(document.documentElement.clientWidth||375)/2;
+    if(t.clientX < screenMid){ rotate(-1); } else { rotate(1); }
+  }
+
+  touchActive=false; wallDone=false; actionLocked=false;
+  swipeDir=0; swipeConsumedX=0;
+},{passive:true});
+
+// ホールド
+document.getElementById('hold-box').addEventListener('touchstart',e=>{e.preventDefault();holdPiece();},{passive:false});
+document.getElementById('hold-box').addEventListener('click',()=>holdPiece());
+
+// Keyboard
+document.addEventListener('keydown',e=>{
+  if(!gameRunning)return;
+  if(e.key==='ArrowLeft'){e.preventDefault();moveL();}
+  else if(e.key==='ArrowRight'){e.preventDefault();moveR();}
+  else if(e.key==='ArrowDown'){e.preventDefault();softDropActive=true;}
+  else if(e.key==='ArrowUp'||e.key===' '){e.preventDefault();hardDrop();}
+  else if(e.key==='z'||e.key==='Z')rotate(-1);
+  else if(e.key==='x'||e.key==='X')rotate(1);
+  else if(e.key==='c'||e.key==='C'||e.key==='Shift')holdPiece();
+});
+document.addEventListener('keyup',e=>{if(e.key==='ArrowDown')softDropActive=false;});
+
+// Start
+function startGame(){
+  if(rafId)cancelAnimationFrame(rafId);
+  setupCanvas();initGame();
+  document.getElementById('overlay').style.display='none';
+  lastTime=performance.now();dropTimerVal=0;
+  if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume();
+  rafId=requestAnimationFrame(ts=>{lastTime=ts;rafId=requestAnimationFrame(gameLoop);});
+}
+// 動かし方ボタン
+const howtoBtn = document.getElementById('howto-btn');
+const howtoBack = document.getElementById('howto-back-btn');
+function openHowto(){
+  document.getElementById('title-menu').classList.add('hidden');
+  document.getElementById('howto-panel').classList.add('visible');
+}
+function closeHowto(){
+  document.getElementById('howto-panel').classList.remove('visible');
+  document.getElementById('title-menu').classList.remove('hidden');
+}
+const startBtn = document.getElementById('start-btn');
+startBtn.addEventListener('click', startGame);
+startBtn.addEventListener('touchend', e=>{ e.preventDefault(); e.stopPropagation(); startGame(); }, {passive:false});
+
+howtoBtn.addEventListener('click', e=>{ e.stopPropagation(); openHowto(); });
+howtoBtn.addEventListener('touchend', e=>{ e.preventDefault(); e.stopPropagation(); openHowto(); }, {passive:false});
+howtoBack.addEventListener('click', e=>{ e.stopPropagation(); closeHowto(); });
+howtoBack.addEventListener('touchend', e=>{ e.preventDefault(); e.stopPropagation(); closeHowto(); }, {passive:false});
+
+// ============================================================
+// Gamepad API (Xboxコントローラー対応)
+// ============================================================
+
+// Gamepadループはメインゲームループに統合済み (gameLoop内でGP.poll呼び出し)
+
+// オーバーレイ中もコントローラーのSTARTボタンを監視
+function gpStartLoop(){
+  if(!gameRunning) GP.poll(16);
+  requestAnimationFrame(gpStartLoop);
+}
+requestAnimationFrame(gpStartLoop);
+
+window.addEventListener('gamepadconnected', e=>{
+  console.log('Gamepad connected:', e.gamepad.id);
+  showToast('🎮 コントローラー接続！');
+});
+window.addEventListener('gamepaddisconnected', e=>{
+  showToast('🎮 コントローラー切断');
+});
+
+function showToast(msg){
+  const el = document.getElementById('action-msg');
+  el.textContent = msg;
+  el.style.opacity = '1';
+  setTimeout(()=> el.style.opacity = '0', 2000);
+}
+
+// ズーム完全禁止
+document.addEventListener('touchstart', e => {
+  if (e.touches.length > 1) e.preventDefault(); // ピンチズーム禁止
+}, { passive: false });
+
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 1) e.preventDefault(); // ピンチズーム禁止
+}, { passive: false });
+
+// ダブルタップズーム禁止（間隔問わず）
+let lastTapTime = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTapTime < 1000) e.preventDefault();
+  lastTapTime = now;
+}, { passive: false });
+
+// Safari gestureイベントも禁止
+document.addEventListener('gesturestart',  e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
+document.addEventListener('gestureend',    e => e.preventDefault(), { passive: false });
+let paused = false;
+
+// ポーズボタン (touchend+clickで確実に反応)
+document.addEventListener('DOMContentLoaded', ()=>{});
+['resume','restart','title'].forEach(id=>{
+  const btn = document.getElementById('btn-'+id);
+  if(!btn) return;
+  const handler = e=>{
+    e.stopPropagation();
+    if(id==='resume')  resumeGame();
+    if(id==='restart') restartGame();
+    if(id==='title')   goTitle();
+  };
+  btn.addEventListener('touchend', handler, {passive:true});
+  btn.addEventListener('click', handler);
+});
+
+// メニューボタン
+const menuBtn = document.getElementById('menu-btn');
+menuBtn.addEventListener('touchend', e=>{ e.stopPropagation(); openMenu(); }, {passive:true});
+menuBtn.addEventListener('click', ()=>openMenu());
+
+function openMenu(){
+  if(!gameRunning) return;
+  paused = true;
+  if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
+  softDropActive = false;
+  document.getElementById('pause-overlay').style.display = 'flex';
+}
+
+function resumeGame(){
+  document.getElementById('pause-overlay').style.display = 'none';
+  paused = false;
+  lastTime = performance.now();
+  rafId = requestAnimationFrame(gameLoop);
+}
+
+function restartGame(){
+  document.getElementById('pause-overlay').style.display = 'none';
+  paused = false;
+  startGame();
+}
+
+function goTitle(){
+  document.getElementById('pause-overlay').style.display = 'none';
+  paused = false;
+  if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
+  gameRunning = false;
+  document.getElementById('howto-panel').classList.remove('visible');
+  document.getElementById('title-menu').classList.remove('hidden');
+  document.getElementById('final-score').classList.add('hidden');
+  document.getElementById('overlay-title').textContent = 'TETRIS';
+  document.getElementById('start-btn').textContent = 'START';
+  document.getElementById('overlay').style.display = 'flex';
+}
+
+function showGameOver(){
+  document.getElementById('overlay-title').textContent='GAME OVER';
+  document.getElementById('final-score').textContent=score.toLocaleString();
+  document.getElementById('final-score').classList.remove('hidden');
+  document.getElementById('howto-panel').classList.remove('visible');
+  document.getElementById('title-menu').classList.remove('hidden');
+  document.getElementById('start-btn').textContent='RETRY';
+  document.getElementById('overlay').style.display = 'flex';
+}
+</script>
+</body>
+</html>
